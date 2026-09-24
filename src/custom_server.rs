@@ -30,11 +30,23 @@ pub(crate) fn init_defaults() {
                 .or_insert_with(|| value.to_owned());
         }
     }
-    config::BUILTIN_SETTINGS
+    {
+        let mut builtin = config::BUILTIN_SETTINGS.write().unwrap();
+        builtin
+            .entry(keys::OPTION_ALLOW_HOSTNAME_AS_ID.to_owned())
+            .or_insert_with(|| "Y".to_owned());
+        // Kiosk terminals must always accept remote support: hide the
+        // "Enable service" toggle in settings.
+        builtin
+            .entry("hide-stop-service".to_owned())
+            .or_insert_with(|| "Y".to_owned());
+    }
+    // Force the service on. An overwrite setting wins over the saved config,
+    // so a stale `stop-service = 'Y'` can no longer show "Service is not running".
+    config::OVERWRITE_SETTINGS
         .write()
         .unwrap()
-        .entry(keys::OPTION_ALLOW_HOSTNAME_AS_ID.to_owned())
-        .or_insert_with(|| "Y".to_owned());
+        .insert("stop-service".to_owned(), "N".to_owned());
 }
 
 #[derive(Debug, PartialEq, Default, Serialize, Deserialize, Clone)]

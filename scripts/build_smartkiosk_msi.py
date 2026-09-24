@@ -56,6 +56,14 @@ def main():
         msi = stage / "msi"
         shutil.copytree(ROOT / "res/msi", msi)
         shutil.copy2(ROOT / "res/icon.ico", stage / "icon.ico")
+        # Always create and start the Windows service, even if an old config
+        # file on the machine contains stop-service = 'Y'.
+        wxs = msi / "Package/Components/RustDesk.wxs"
+        wxs_text = wxs.read_text(encoding="utf-8")
+        stop_condition = "STOP_SERVICE=&quot;&apos;Y&apos;&quot;"
+        if wxs_text.count(stop_condition) != 5:
+            raise RuntimeError("Unexpected STOP_SERVICE conditions in RustDesk.wxs")
+        wxs.write_text(wxs_text.replace(stop_condition, "0"), encoding="utf-8")
         run([sys.executable, "preprocess.py", "--app-name", "Smartkiosk",
              "--manufacturer", "Smartkiosk", "-d", "../payload"], msi)
         # This fork uses the repository license, not the branded upstream EULA.
