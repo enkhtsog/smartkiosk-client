@@ -1,0 +1,110 @@
+name: Build Smartkiosk Windows installer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bridge:
+    uses: ./.github/workflows/bridge.yml
+
+  window-helper:
+    uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
+    with:
+      target: windows-2022
+      configuration: Release
+      platform: x64
+      target_version: Windows10
+
+  installer:
+    needs: [bridge, window-helper]
+    runs-on: windows-2022
+    timeout-minutes: 180
+    env:
+      VCPKG_DEFAULT_HOST_TRIPLET: x64-windows-static
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: recursive
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: bridge-artifact
+          path: ./
+
+      - uses: KyleMayes/install-llvm-action@ebc0426251bc40c7cd31162802432c68818ab8f0
+        with:
+          version: '15.0.6'
+
+      - uses: subosito/flutter-action@2783a3f08e1baf891508463f8c6653c258246225
+        id: flutter
+        with:
+          channel: stable
+          flutter-version: '3.24.5'
+          architecture: x64
+
+      - name: Prepare the upstream Windows Flutter engine
+        shell: pwsh
+        run: |
+          flutter precache --windows
+          if ($LASTEXITCODE -ne 0) { throw 'Flutter precache failed' }
+          Invoke-WebRequest https://github.com/rustdesk/engine/releases/download/main/windows-x64-release.zip -OutFile windows-x64-release.zip
+          Expand-Archive windows-x64-release.zip windows-x64-release
+          $engine = '${{ steps.flutter.outputs.CACHE-PATH }}/bin/cache/artifacts/engine/windows-x64-release'
+          Copy-Item windows-x64-release/* $engine -Recurse -Force
+
+      - name: Apply the upstream Flutter dropdown patch
+        shell: bash
+        run: |
+          flutter_root="$(dirname "$(dirname "$(which flutter)")")"
+          git -C "$flutter_root" apply "$GITHUB_WORKSPACE/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff"
+
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+        with:
+          toolchain: '1.75'
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          prefix-key: smartkiosk-windows-x64
+
+      - uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2
+        with:
+          vcpkgDirectory: C:\vcpkg
+          vcpkgGitCommitId: 9e593bb18ea69cc5095e012465dcd675a822ed0d
+          doNotCache: false
+
+      - name: Build native dependencies
+        shell: bash
+        run: '"$VCPKG_ROOT/vcpkg" install --triplet x64-windows-static --x-install-root="$VCPKG_ROOT/installed"'
+
+      - name: Build the customized client
+        run: python build.py --portable --flutter --skip-portable-pack --hwcodec
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: topmostwindow-artifacts-x64
+          path: flutter/build/windows/x64/runner/Release
+
+      - name: Include virtual display driver
+        run: |
+          Invoke-WebRequest https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
+          Expand-Archive usbmmidd_v2.zip .
+          Copy-Item usbmmidd_v2 flutter/build/windows/x64/runner/Release -Recurse
+
+      - uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce
+
+      - name: Package Smartkiosk
+        run: python scripts/build_smartkiosk_msi.py
+
+      - name: Upload the installer and checksum
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: Smartkiosk-Windows-x64
+          path: |
+            dist/Smartkiosk-Setup-x64.msi
+            dist/Smartkiosk-Setup-x64.msi.sha256
+          if-no-files-found: error

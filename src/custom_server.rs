@@ -9,6 +9,34 @@ use hbb_common::{
 };
 use serde_derive::{Deserialize, Serialize};
 
+pub(crate) fn init_defaults() {
+    use base::config::keys;
+    use hbb_common::config;
+
+    *config::APP_NAME.write().unwrap() = "Smartkiosk".to_owned();
+
+    {
+        let mut settings = config::DEFAULT_SETTINGS.write().unwrap();
+        for (key, value) in [
+            (keys::OPTION_CUSTOM_RENDEZVOUS_SERVER, "remote.ionline.mn"),
+            (keys::OPTION_RELAY_SERVER, "remote.ionline.mn"),
+            (
+                keys::OPTION_KEY,
+                "Et3a8X4oXI1lng6EqZuef2U1aGoeqAGRVIGVDSQ0uCs=",
+            ),
+        ] {
+            settings
+                .entry(key.to_owned())
+                .or_insert_with(|| value.to_owned());
+        }
+    }
+    config::BUILTIN_SETTINGS
+        .write()
+        .unwrap()
+        .entry(keys::OPTION_ALLOW_HOSTNAME_AS_ID.to_owned())
+        .or_insert_with(|| "Y".to_owned());
+}
+
 #[derive(Debug, PartialEq, Default, Serialize, Deserialize, Clone)]
 pub struct CustomServer {
     #[serde(default)]
