@@ -23,7 +23,12 @@ endpoint, authentication, payload format, and interval are still pending.
   needed, upstream's hostname option uses the PC name, replacing spaces with
   hyphens. If hostname lookup fails, upstream falls back to its generated ID.
   Hostname IDs still require acceptance by your ID server and unique PC names.
-- The upstream password generation and authentication behavior is unchanged.
+- The build-time `SMARTKIOSK_PASSWORD` is enforced for incoming connections.
+  Startup clears older local permanent passwords and disables password changes.
+  Saved/custom verification and approval settings cannot re-enable temporary
+  passwords, authenticator OTP, or a kiosk-side Accept prompt.
+- The controller must supply the fixed password or remember it locally. Rebuild,
+  install the updated client, and restart its service to activate this policy.
 - Smartkiosk uses its own configuration directory and service/application name.
   It does not automatically migrate another RustDesk installation's configuration.
 - Existing copyright notices and the upstream license are retained. The original
@@ -88,3 +93,21 @@ Changed existing paths:
 - `flutter/windows/runner/main.cpp`: Smartkiosk window-title fallback.
 
 New build files do not add runtime behavior. The shared submodule is unmodified.
+
+## Fixed-password build setup
+
+In this repository, open Settings > Secrets and variables > Actions and create
+`SMARTKIOSK_PASSWORD` with your chosen kiosk password (at least 8 characters).
+Then run Build Smartkiosk Windows installer. Do not put the password in source,
+workflow inputs, or commit messages. For local builds, supply the same environment
+variable to the build process. Builds fail if it is absent or too short.
+
+Regression surface: `src/common.rs` applies the policy after all custom-client
+loading paths, including early returns. `src/custom_server.rs` uses upstream
+preset authentication, clears the local password that would take precedence,
+locks password changes, and overrides verification, approval, and 2FA options.
+The shared authentication implementation and submodule are unchanged. Existing
+always-on service settings and Smart Kiosk title changes are preserved.
+
+Validation: patch whitespace and source review only; the customized executable
+and Windows service behavior still require compilation and runtime testing.

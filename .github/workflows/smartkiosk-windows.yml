@@ -82,7 +82,14 @@ jobs:
         run: '"$VCPKG_ROOT/vcpkg" install --triplet x64-windows-static --x-install-root="$VCPKG_ROOT/installed"'
 
       - name: Build the customized client
-        run: python build.py --portable --flutter --skip-portable-pack --hwcodec
+        env:
+          SMARTKIOSK_PASSWORD: ${{ secrets.SMARTKIOSK_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrEmpty($env:SMARTKIOSK_PASSWORD) -or $env:SMARTKIOSK_PASSWORD.Length -lt 8) {
+            throw 'Set the SMARTKIOSK_PASSWORD repository Actions secret before building.'
+          }
+          python build.py --portable --flutter --skip-portable-pack --hwcodec
+          if ($LASTEXITCODE -ne 0) { throw 'Client build failed' }
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
