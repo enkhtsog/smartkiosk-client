@@ -49,6 +49,38 @@ pub(crate) fn init_defaults() {
         .insert("stop-service".to_owned(), "N".to_owned());
 }
 
+pub(crate) fn enforce_kiosk_password() {
+    use base::config::keys;
+    use hbb_common::{
+        config::{self, Config},
+        log,
+    };
+
+    const PASSWORD: &str = env!("SMARTKIOSK_PASSWORD", "Set SMARTKIOSK_PASSWORD when building Smartkiosk");
+    const _: () = assert!(PASSWORD.len() >= 8, "Smartkiosk password must contain at least 8 bytes");
+
+    // Apply after custom.txt so saved settings and custom overrides cannot enable OTP.
+    {
+        let mut settings = config::OVERWRITE_SETTINGS.write().unwrap();
+        settings.insert(keys::OPTION_VERIFICATION_METHOD.into(), "use-permanent-password".into());
+        settings.insert(keys::OPTION_APPROVE_MODE.into(), "password".into());
+        settings.insert("2fa".into(), String::new());
+    }
+    {
+        let mut settings = config::HARD_SETTINGS.write().unwrap();
+        settings.insert("password".into(), PASSWORD.into());
+        settings.remove("salt");
+    }
+    // Local passwords take precedence over presets in upstream authentication.
+    config::BUILTIN_SETTINGS.write().unwrap()
+        .remove(keys::OPTION_DISABLE_CHANGE_PERMANENT_PASSWORD);
+    if !Config::set_permanent_password("") {
+        log::error!("Could not clear the previous Smartkiosk permanent password");
+    }
+    config::BUILTIN_SETTINGS.write().unwrap()
+        .insert(keys::OPTION_DISABLE_CHANGE_PERMANENT_PASSWORD.into(), "Y".into());
+}
+
 #[derive(Debug, PartialEq, Default, Serialize, Deserialize, Clone)]
 pub struct CustomServer {
     #[serde(default)]
